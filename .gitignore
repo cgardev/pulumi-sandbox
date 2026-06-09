@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Test output
+coverage/
+
+# Sandbox state created by examples
+.sandbox/
+
+# Editors
+.idea/
+.vscode/
+
+# Operating system noise
+.DS_Store
+Thumbs.db

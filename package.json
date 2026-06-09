@@ -1,0 +1,52 @@
+{
+  "name": "pulumi-sandbox-os",
+  "version": "0.1.0",
+  "description": "Local development sandboxes as code: a batteries-included lifecycle harness for Pulumi inline programs that provision docker-based infrastructure on the developer machine.",
+  "keywords": [
+    "pulumi",
+    "automation-api",
+    "sandbox",
+    "local-development",
+    "docker",
+    "infrastructure-as-code",
+    "developer-experience"
+  ],
+  "license": "MIT",
+  "author": "Cristian Garcia",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.5.2",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./docker": {
+      "types": "./dist/docker/index.d.ts",
+      "import": "./dist/docker/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@pulumi/pulumi": "^3.245.0"
+  },
+  "devDependencies": {
+    "@pulumi/pulumi": "^3.245.0",
+    "@types/node": "^25.9.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
