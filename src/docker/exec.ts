@@ -9,7 +9,7 @@ export interface DockerExecOptions {
    * own layer, while a throw here would wedge destroy and refresh flows.
    * Default: `true`.
    */
-  warnOnly?: boolean;
+  warnOnly?: boolean | undefined;
 }
 
 /**

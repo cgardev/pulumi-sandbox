@@ -3,7 +3,7 @@ import { fail } from "../terminal.js";
 
 export interface AttachShellOptions {
   /** Shell to start inside the container. Default: `/bin/bash`. */
-  shell?: string;
+  shell?: string | undefined;
 }
 
 /**

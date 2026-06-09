@@ -81,13 +81,9 @@ await sandbox(
     ]);
 
     // Everything below talks to the Keycloak the containers above serve.
-    // During destroy those resources are purged from state instead (see
-    // containerHostedProviders), so registering the provider would only
-    // attempt a doomed login against a stopping container.
-    if (context.destroying) {
-      return;
-    }
-
+    // During destroy the program does not run and these resources are
+    // purged from state instead (see containerHostedProviders), so the
+    // teardown never attempts a login against a stopping container.
     const identityProvider = new keycloak.Provider(IDENTITY_PROVIDER, {
       // The provider configures itself only once the server answers HTTP.
       url: identity.readyUrl,

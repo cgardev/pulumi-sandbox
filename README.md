@@ -55,7 +55,8 @@ infrastructure entry point contains nothing but infrastructure.
   Point `backendUrl` at `s3://...` later if the team wants shared state.
 - **Per-developer isolation.** A developer id (from `SANDBOX_DEV_ID`, an
   optional `.env` file, or the `local` default) suffixes the stack and every
-  physical resource name, so two checkouts or two developers never collide.
+  physical resource name, so two developers on one machine — or two checkouts
+  given distinct `SANDBOX_DEV_ID` values — never collide.
 - **A complete lifecycle.** `create`, `destroy`, `reset`, `preview`,
   `cancel`, `outputs`, `help`, an interactive menu, and your own custom
   commands — with readable output and honest exit codes.
@@ -82,6 +83,8 @@ infrastructure entry point contains nothing but infrastructure.
 
 ```bash
 pnpm add pulumi-sandbox-os @pulumi/pulumi
+# plus the providers your program uses, e.g. for containers:
+pnpm add @pulumi/docker
 ```
 
 ## The lifecycle
@@ -110,14 +113,15 @@ await sandbox({ name: "shop" }, (context) => {
   context.stackName;                   // "shop-jdoe"
   context.physicalName("orders-db");   // "shop-orders-db-jdoe"
   context.action;                      // the lifecycle operation executing the program
-  context.destroying;                  // true inside a destroy operation
 });
 ```
 
 `physicalName` keeps container, network, and volume names collision-free per
-developer. `action` and `destroying` reflect the operation currently
-executing — during `reset`, the destroy half sees `destroying === true` and
-the create half does not.
+developer. `action` is the operation currently executing the program —
+`create` or `preview` — and gates side effects like writing generated
+artifacts. The program only runs for operations that need the resource
+graph; a `destroy` works from the recorded state and never executes it, so
+programs need no destroy-time guards.
 
 Returning a record from the program publishes it as stack outputs:
 
@@ -141,12 +145,8 @@ Declare such providers and the lifecycle handles the rest:
 ```typescript
 await sandbox(
   { name: "shop", containerHostedProviders: ["identity"] },
-  (context) => {
+  () => {
     const identity = new IdentityServer(/* keycloak container + sidecar */);
-
-    if (context.destroying) {
-      return;  // the destroy plan keeps the containers, skips the provider
-    }
 
     const provider = new keycloak.Provider("identity", {
       url: identity.readyUrl,  // configures itself only after boot
@@ -232,6 +232,10 @@ await sandbox(
 ├── state/            # the file:// backend: checkpoints, history, backups
 └── work/<project>/   # the generated Pulumi project and per-stack settings
 ```
+
+By default `.sandbox/` lives in the package containing the entry script —
+anchored there rather than to the working directory, so invoking the sandbox
+from anywhere targets the same state. Override the location with `homeDir`.
 
 Secrets on the local backend are encrypted with a well-known default
 passphrase (`sandbox`) to keep the zero-configuration promise — local

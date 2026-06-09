@@ -8,15 +8,13 @@ A realistic local platform in one program:
 - a realm and a service client managed through `@pulumi/keycloak`
 - generated `.env` files carrying connection strings and the client secret
 
-It demonstrates the three patterns that make container-hosted providers
-workable, all driven by the library:
+It demonstrates the two patterns that make container-hosted providers
+workable, both driven by the library:
 
 1. `containerHostedProviders: ["identity"]` — the lifecycle purges the
-   provider's resources from state when their backing container goes away.
-2. `if (context.destroying) return;` — the destroy run never registers the
-   provider whose service is being torn down (the containers above the guard
-   stay registered, so the destroy plan still includes them).
-3. `url: identity.readyUrl` — the provider waits for the server to answer
+   provider's resources from state when their backing container goes away,
+   so teardown never needs to talk to the service the container hosted.
+2. `url: identity.readyUrl` — the provider waits for the server to answer
    HTTP before configuring itself.
 
 ```bash
@@ -24,7 +22,7 @@ workable, all driven by the library:
 pnpm install && pnpm build
 
 # from this directory
-pnpm sandbox:create     # network, 4 containers, realm, client, .env files
+pnpm sandbox:create     # network, 5 containers, realm, client, .env files
 pnpm sandbox:destroy
 pnpm sandbox:reset
 ```

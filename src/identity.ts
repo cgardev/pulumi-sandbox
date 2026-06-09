@@ -15,24 +15,24 @@ const DEV_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 export interface DevIdOptions {
   /** Explicit developer id; takes precedence over every other source. */
-  devId?: string;
+  devId?: string | undefined;
 
   /**
    * Optional `KEY=value` file consulted when the environment variable is not
    * set — typically a git-ignored `.env` next to the infrastructure entry
    * point, so each developer configures their identity once per checkout.
    */
-  envFile?: string;
+  envFile?: string | undefined;
 
   /**
    * Fail instead of falling back to {@link DEFAULT_DEV_ID}. Teams sharing a
    * remote backend set this so two developers can never collide on the
    * default stack.
    */
-  require?: boolean;
+  require?: boolean | undefined;
 
   /** Environment to read from; defaults to `process.env`. */
-  environment?: Record<string, string | undefined>;
+  environment?: Record<string, string | undefined> | undefined;
 }
 
 /**

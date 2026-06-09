@@ -3,16 +3,16 @@ import { warn } from "./terminal.js";
 
 export interface HttpProbeOptions {
   /** Give up after this long. Default: 180 seconds. */
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
   /** Pause between attempts. Default: 2 seconds. */
-  intervalMs?: number;
+  intervalMs?: number | undefined;
   /**
    * What counts as ready. `"any-response"` (the default) accepts every HTTP
    * status — including errors like 403 — because a status line proves the
    * server is up, which is all a boot probe needs. `"ok"` additionally
    * requires a 2xx status.
    */
-  expect?: "any-response" | "ok";
+  expect?: "any-response" | "ok" | undefined;
 }
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -55,10 +55,10 @@ export interface ReadyWhenHttpOptions extends HttpProbeOptions {
    * Runs once the probe succeeds — the place for imperative post-boot
    * configuration (a `docker exec` against the freshly started container,
    * for example). Skipped when the probe times out. Note that the readiness
-   * chain re-executes on every Pulumi operation that resolves the gate, so
-   * this callback must be idempotent.
+   * chain re-executes on every update that resolves the gate, so this
+   * callback must be idempotent.
    */
-  onReady?: () => void | Promise<void>;
+  onReady?: (() => void | Promise<void>) | undefined;
 }
 
 /**
@@ -76,6 +76,10 @@ export interface ReadyWhenHttpOptions extends HttpProbeOptions {
  * happens in a plain `apply` closure — nothing is serialized into Pulumi
  * state — and the output always resolves to `url`, even on timeout, to keep
  * the graph healthy during destroy and refresh.
+ *
+ * Dry runs are exempt: during a preview the output resolves immediately,
+ * without probing and without `onReady` — a preview must neither stall on a
+ * stopped container nor execute side effects.
  */
 export function readyWhenHttp(
   gate: pulumi.Input<unknown>,
@@ -83,6 +87,9 @@ export function readyWhenHttp(
   options: ReadyWhenHttpOptions = {},
 ): pulumi.Output<string> {
   return (pulumi.output(gate) as pulumi.Output<unknown>).apply(async () => {
+    if (pulumi.runtime.isDryRun()) {
+      return url;
+    }
     const ready = await waitForHttp(url, options);
     if (ready && options.onReady) {
       await options.onReady();

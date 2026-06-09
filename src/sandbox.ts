@@ -1,7 +1,9 @@
+import path from "node:path";
+import fs from "node:fs";
 import { automation } from "@pulumi/pulumi";
 import { ACTION_DESCRIPTIONS, LIFECYCLE_ACTIONS, isLifecycleAction, type LifecycleAction } from "./actions.js";
 import { ensureDirectories, fileBackendUrl, resolveDirectories } from "./backend.js";
-import { SandboxConfigurationError, SandboxError, SandboxLockError } from "./errors.js";
+import { SandboxConfigurationError, SandboxLockError } from "./errors.js";
 import { resolveDevId } from "./identity.js";
 import { runInteractiveMenu } from "./interactive.js";
 import { cancelStack, createStack, destroyStack, previewStack, printOutputs, type StackHost } from "./lifecycle.js";
@@ -21,34 +23,37 @@ export interface SandboxOptions {
   name: string;
 
   /** Explicit developer id; usually left unset and resolved from the environment. */
-  devId?: string;
+  devId?: string | undefined;
 
   /**
    * Refuse to fall back to the `local` developer id. Set this when the team
    * shares a remote backend and accidental stack collisions must be
    * impossible.
    */
-  requireDevId?: boolean;
+  requireDevId?: boolean | undefined;
 
   /**
    * Optional `KEY=value` file (typically a git-ignored `.env`) consulted for
    * `SANDBOX_DEV_ID` when the environment variable is not set.
    */
-  envFile?: string;
+  envFile?: string | undefined;
 
   /**
    * Pulumi backend URL. Defaults to a self-contained `file://` backend under
    * {@link SandboxOptions.homeDir} — no cloud account, no login. Point it at
    * `s3://...` (or any other DIY backend) to share state remotely.
    */
-  backendUrl?: string;
+  backendUrl?: string | undefined;
 
   /**
    * Directory holding sandbox state and the Pulumi work directory. Defaults
-   * to `.sandbox` under the current working directory; add it to
+   * to `.sandbox` in the package containing the entry script (the nearest
+   * directory with a `package.json`, falling back to the entry script's
+   * directory) — anchored there rather than to the working directory, so
+   * invoking the sandbox from anywhere targets the same state. Add it to
    * `.gitignore`.
    */
-  homeDir?: string;
+  homeDir?: string | undefined;
 
   /**
    * Passphrase for Pulumi's secrets provider. Local sandboxes hold
@@ -56,55 +61,54 @@ export interface SandboxOptions {
    * zero-configuration promise; override it (or set
    * `PULUMI_CONFIG_PASSPHRASE`) when the backend is shared.
    */
-  passphrase?: string;
+  passphrase?: string | undefined;
 
   /**
    * Names of provider resources whose backing service lives in a container
-   * this sandbox manages — for example `"keycloak"` when the program
-   * declares `new keycloak.Provider("keycloak", ...)` against a Keycloak
+   * this sandbox manages — for example `"identity"` when the program
+   * declares `new keycloak.Provider("identity", ...)` against a Keycloak
    * container it also creates. These providers get state surgery during
    * destroy (and on create retries), so tearing down or recreating the
    * container never requires talking to the service it hosted.
    */
-  containerHostedProviders?: readonly string[];
+  containerHostedProviders?: readonly string[] | undefined;
 
   /**
    * Additional command line verbs, dispatched before any Pulumi machinery
    * is initialized — ideal for fast utilities like opening a shell inside a
    * running container.
    */
-  commands?: Record<string, SandboxCommand>;
+  commands?: Record<string, SandboxCommand> | undefined;
 
   /** Command line arguments; defaults to `process.argv.slice(2)`. */
-  argv?: readonly string[];
+  argv?: readonly string[] | undefined;
 }
 
-/** The program's view of the sandbox while resources are being declared. */
+/**
+ * The program's view of the sandbox while resources are being declared.
+ *
+ * The program runs for operations that need the resource graph — `create`,
+ * `preview`, and the create half of `reset`. A `destroy` works from the
+ * recorded state and does not execute the program, so no destroy-time
+ * guards are needed in it.
+ */
 export interface SandboxContext {
   readonly projectName: string;
   readonly devId: string;
   readonly stackName: string;
 
   /**
-   * The lifecycle operation currently executing the program. During `reset`
-   * this is `destroy` for the teardown half and `create` for the rebuild,
-   * so guards behave correctly in both halves.
-   */
-  readonly action: LifecycleAction;
-
-  /**
-   * Whether the program is running inside a destroy operation. Use it to
-   * skip registering container-hosted providers and their resources — the
-   * containers themselves must stay registered so the destroy plan includes
-   * them:
+   * The lifecycle operation currently executing the program — `create` or
+   * `preview`. Use it to confine side effects like writing generated
+   * artifacts to real create runs:
    *
    * ```typescript
-   * const keycloak = new KeycloakService(...);   // always registered
-   * if (context.destroying) return;              // provider skipped on destroy
-   * const provider = new keycloak.Provider(...);
+   * if (context.action === "create") {
+   *   environment.write("generated/application.env");
+   * }
    * ```
    */
-  readonly destroying: boolean;
+  readonly action: LifecycleAction;
 
   /**
    * Builds a developer-scoped physical resource name:
@@ -238,9 +242,9 @@ function resolveIdentity(options: SandboxOptions): SandboxIdentity {
     );
   }
   const devId = resolveDevId({
-    ...(options.devId !== undefined ? { devId: options.devId } : {}),
-    ...(options.envFile !== undefined ? { envFile: options.envFile } : {}),
-    ...(options.requireDevId !== undefined ? { require: options.requireDevId } : {}),
+    devId: options.devId,
+    envFile: options.envFile,
+    require: options.requireDevId,
   });
   return {
     projectName: options.name,
@@ -251,6 +255,31 @@ function resolveIdentity(options: SandboxOptions): SandboxIdentity {
 }
 
 /**
+ * The default sandbox home: `.sandbox` in the package containing the entry
+ * script. Anchoring to the entry script rather than the working directory
+ * means `node tool/sandbox.ts destroy` targets the same state from any
+ * directory — a sandbox invoked from the wrong place must never conclude
+ * there is nothing to destroy.
+ */
+function defaultHomeDirectory(): string {
+  const entry = process.argv[1];
+  let directory = entry !== undefined ? path.dirname(path.resolve(entry)) : process.cwd();
+  let current = directory;
+  while (true) {
+    if (fs.existsSync(path.join(current, "package.json"))) {
+      directory = current;
+      break;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return path.join(directory, ".sandbox");
+}
+
+/**
  * Builds a {@link Sandbox} without dispatching any action: resolves the
  * developer identity, prepares the local backend and work directory, and
  * creates or selects the stack with the inline program wired in.
@@ -258,7 +287,7 @@ function resolveIdentity(options: SandboxOptions): SandboxIdentity {
 export async function createSandbox(options: SandboxOptions, program: SandboxProgram): Promise<Sandbox> {
   const identity = resolveIdentity(options);
 
-  const directories = resolveDirectories(options.homeDir ?? ".sandbox", identity.projectName);
+  const directories = resolveDirectories(options.homeDir ?? defaultHomeDirectory(), identity.projectName);
   ensureDirectories(directories);
   const backendUrl = options.backendUrl ?? fileBackendUrl(directories.state);
   const passphrase = options.passphrase ?? process.env.PULUMI_CONFIG_PASSPHRASE ?? DEFAULT_PASSPHRASE;
@@ -270,9 +299,6 @@ export async function createSandbox(options: SandboxOptions, program: SandboxPro
     stackName: identity.stackName,
     get action() {
       return state.action;
-    },
-    get destroying() {
-      return state.action === "destroy";
     },
     physicalName: identity.physicalName,
   };
@@ -307,7 +333,7 @@ export async function createSandbox(options: SandboxOptions, program: SandboxPro
  * non-zero exit code.
  *
  * ```typescript
- * await sandbox({ name: "acme-shop" }, async (context) => {
+ * await sandbox({ name: "acme-shop" }, (context) => {
  *   // plain Pulumi resources — containers, databases, providers
  * });
  * ```
@@ -326,7 +352,8 @@ export async function sandbox(options: SandboxOptions, program: SandboxProgram):
       return;
     }
 
-    const command = options.commands?.[verb];
+    const command =
+      options.commands !== undefined && Object.hasOwn(options.commands, verb) ? options.commands[verb] : undefined;
     if (command !== undefined) {
       const exitCode = await command.run({ ...resolveIdentity(options), argv: argv.slice(1) });
       if (typeof exitCode === "number" && exitCode !== 0) {
@@ -342,7 +369,11 @@ export async function sandbox(options: SandboxOptions, program: SandboxProgram):
     }
 
     const instance = await createSandbox(options, program);
-    heading(instance.projectName, instance.stackName, verb);
+
+    // The `outputs` verb keeps stdout machine-readable: nothing but JSON.
+    if (verb !== "outputs") {
+      heading(instance.projectName, instance.stackName, verb);
+    }
 
     if (verb === "interactive") {
       await runInteractiveMenu({
