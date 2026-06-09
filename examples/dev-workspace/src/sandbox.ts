@@ -1,6 +1,6 @@
 import * as docker from "@pulumi/docker";
-import { findGitRoot, sandbox } from "pulumi-sandbox";
-import { attachShell, discoverMaskVolumes, type MaskRule } from "pulumi-sandbox/docker";
+import { findGitRoot, sandbox } from "@cgardev/pulumi-sandbox";
+import { attachShell, discoverMaskVolumes, type MaskRule } from "@cgardev/pulumi-sandbox/docker";
 
 // A containerized development workspace: the repository is bind-mounted at
 // /workspace, while everything the build generates lives on container-local

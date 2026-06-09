@@ -23,30 +23,33 @@ importers:
 
   examples/dev-workspace:
     dependencies:
+      '@cgardev/pulumi-sandbox':
+        specifier: workspace:*
+        version: link:../..
       '@pulumi/docker':
         specifier: ^5.0.0
         version: 5.0.0(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: ^3.245.0
         version: 3.245.0(typescript@6.0.3)
-      pulumi-sandbox:
-        specifier: workspace:*
-        version: link:../..
 
   examples/getting-started:
     dependencies:
+      '@cgardev/pulumi-sandbox':
+        specifier: workspace:*
+        version: link:../..
       '@pulumi/docker':
         specifier: ^5.0.0
         version: 5.0.0(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: ^3.245.0
         version: 3.245.0(typescript@6.0.3)
-      pulumi-sandbox:
-        specifier: workspace:*
-        version: link:../..
 
   examples/multi-service:
     dependencies:
+      '@cgardev/pulumi-sandbox':
+        specifier: workspace:*
+        version: link:../..
       '@pulumi/docker':
         specifier: ^5.0.0
         version: 5.0.0(typescript@6.0.3)
@@ -56,9 +59,6 @@ importers:
       '@pulumi/pulumi':
         specifier: ^3.245.0
         version: 3.245.0(typescript@6.0.3)
-      pulumi-sandbox:
-        specifier: workspace:*
-        version: link:../..
 
 packages:
 

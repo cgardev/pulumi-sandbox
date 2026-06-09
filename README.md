@@ -1,10 +1,13 @@
 # Pulumi Sandbox
 
 [![ci](https://github.com/cgardev/pulumi-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/cgardev/pulumi-sandbox/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/pulumi-sandbox)](https://www.npmjs.com/package/pulumi-sandbox)
+[![npm](https://img.shields.io/npm/v/%40cgardev%2Fpulumi-sandbox)](https://www.npmjs.com/package/@cgardev/pulumi-sandbox)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **Local development sandboxes as code.**
+
+> Unofficial project — not affiliated with or endorsed by Pulumi Corporation.
+> Pulumi is a trademark of Pulumi Corporation.
 
 Write a plain [Pulumi](https://www.pulumi.com) program describing the local
 infrastructure your application needs — containers, databases, message
@@ -14,7 +17,7 @@ lifecycle around it. No backend account, no YAML, no glue scripts.
 ```typescript
 // src/sandbox.ts
 import * as docker from "@pulumi/docker";
-import { sandbox } from "pulumi-sandbox";
+import { sandbox } from "@cgardev/pulumi-sandbox";
 
 await sandbox({ name: "shop" }, (context) => {
   const image = new docker.RemoteImage("postgres", { name: "postgres:18", keepLocally: true });
@@ -72,7 +75,7 @@ infrastructure entry point contains nothing but infrastructure.
 - **Developer-experience helpers.** `EnvironmentFile` renders ordered,
   grouped `.env` files; `deepResolve` turns a tree of Pulumi outputs into one
   concrete value; `readyWhenHttp` gates providers on a service actually
-  booting; `findGitRoot` anchors paths; `pulumi-sandbox/docker` adds
+  booting; `findGitRoot` anchors paths; `@cgardev/pulumi-sandbox/docker` adds
   `attachShell`, `dockerExec`, and rule-driven mask-volume discovery.
 - **A tiny, generic core.** ESM, fully typed, zero runtime dependencies, and
   `@pulumi/pulumi` as the only peer dependency. The library has no knowledge
@@ -86,7 +89,7 @@ infrastructure entry point contains nothing but infrastructure.
 - Docker, when the program manages containers
 
 ```bash
-pnpm add pulumi-sandbox @pulumi/pulumi
+pnpm add @cgardev/pulumi-sandbox @pulumi/pulumi
 # plus the providers your program uses, e.g. for containers:
 pnpm add @pulumi/docker
 ```
@@ -181,7 +184,7 @@ collapses any tree of Pulumi outputs into one concrete value, so generated
 credentials land in the same file as static ports:
 
 ```typescript
-import { EnvironmentFile, deepResolve } from "pulumi-sandbox";
+import { EnvironmentFile, deepResolve } from "@cgardev/pulumi-sandbox";
 
 const environment = new EnvironmentFile([
   { ORDERS_DATABASE_URL: ordersDatabase.connectionUri },
@@ -205,7 +208,7 @@ Verbs beyond the lifecycle dispatch before any Pulumi machinery starts, so
 they stay instant:
 
 ```typescript
-import { attachShell } from "pulumi-sandbox/docker";
+import { attachShell } from "@cgardev/pulumi-sandbox/docker";
 
 await sandbox(
   {
@@ -252,7 +255,7 @@ the whole team.
 
 ## API overview
 
-Core (`pulumi-sandbox`):
+Core (`@cgardev/pulumi-sandbox`):
 
 - `sandbox(options, program)` — the complete entry point: dispatch, lifecycle, error rendering
 - `createSandbox(options, program)` / `Sandbox` — programmatic control, the underlying `automation.Stack` included
@@ -262,7 +265,7 @@ Core (`pulumi-sandbox`):
 - `fileBackendUrl`, `resolveDirectories`, `ensureDirectories`
 - `SandboxError`, `SandboxConfigurationError`, `SandboxLockError`, `EnvironmentFileError`
 
-Docker utilities (`pulumi-sandbox/docker`, host-side, no `@pulumi/docker` required):
+Docker utilities (`@cgardev/pulumi-sandbox/docker`, host-side, no `@pulumi/docker` required):
 
 - `attachShell(containerName, options)` — interactive `docker exec`
 - `dockerExec(containerName, command, options)` — idempotent post-boot configuration

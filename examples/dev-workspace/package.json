@@ -15,6 +15,6 @@
   "dependencies": {
     "@pulumi/docker": "^5.0.0",
     "@pulumi/pulumi": "^3.245.0",
-    "pulumi-sandbox": "workspace:*"
+    "@cgardev/pulumi-sandbox": "workspace:*"
   }
 }

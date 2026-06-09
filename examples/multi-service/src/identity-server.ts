@@ -1,6 +1,6 @@
 import * as docker from "@pulumi/docker";
 import * as pulumi from "@pulumi/pulumi";
-import { readyWhenHttp } from "pulumi-sandbox";
+import { readyWhenHttp } from "@cgardev/pulumi-sandbox";
 
 interface IdentityServerArgs {
   /** Physical container name; doubles as the in-network hostname. */

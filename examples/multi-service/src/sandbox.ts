@@ -1,6 +1,6 @@
 import * as docker from "@pulumi/docker";
 import * as keycloak from "@pulumi/keycloak";
-import { EnvironmentFile, deepResolve, sandbox } from "pulumi-sandbox";
+import { EnvironmentFile, deepResolve, sandbox } from "@cgardev/pulumi-sandbox";
 import { IdentityServer } from "./identity-server.ts";
 import { PostgresDatabase } from "./postgres-database.ts";
 
