@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 (2026-06-09)
+
+- Rewrote the README: a real explanation of where the library comes from,
+  honest caveats, and less mechanical prose. No code changes.
+
 ## 0.1.1 (2026-06-09)
 
 - Renamed the package to `@cgardev/pulumi-sandbox`: the scoped name puts the

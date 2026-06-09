@@ -1,6 +1,6 @@
 {
   "name": "@cgardev/pulumi-sandbox",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local development sandboxes as code: a batteries-included lifecycle harness for Pulumi inline programs that provision docker-based infrastructure on the developer machine. Unofficial: not affiliated with or endorsed by Pulumi Corporation.",
   "keywords": [
     "pulumi",
