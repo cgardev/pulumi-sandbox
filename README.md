@@ -1,4 +1,4 @@
-# pulumi-sandbox
+# Pulumi Sandbox
 
 [![ci](https://github.com/cgardev/pulumi-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/cgardev/pulumi-sandbox/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/pulumi-sandbox)](https://www.npmjs.com/package/pulumi-sandbox)
