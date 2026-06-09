@@ -26,16 +26,17 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "default": "./dist/index.js"
     },
     "./docker": {
       "types": "./dist/docker/index.d.ts",
-      "import": "./dist/docker/index.js"
+      "default": "./dist/docker/index.js"
     }
   },
   "sideEffects": false,
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
+    "prepack": "pnpm build",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
