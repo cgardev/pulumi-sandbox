@@ -38,4 +38,17 @@ describe("deepResolve", () => {
   it("passes plain values through untouched", async () => {
     await expect(valueOf(deepResolve("plain"))).resolves.toBe("plain");
   });
+
+  it("rejects class instances with the offending path", () => {
+    class Box {}
+
+    expect(() => deepResolve({ credentials: { box: new Box() } })).toThrow(/value\.credentials\.box.*Box/);
+  });
+
+  it("rejects circular references instead of overflowing the stack", () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+
+    expect(() => deepResolve(value)).toThrow(/circular reference/);
+  });
 });

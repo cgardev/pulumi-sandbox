@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import * as pulumi from "@pulumi/pulumi";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EnvironmentFile, EnvironmentFileError } from "../src/index.js";
 
@@ -62,6 +63,26 @@ describe("EnvironmentFile", () => {
 
     expect(() => file.add({ BROKEN: undefined as unknown as string })).toThrow(EnvironmentFileError);
     expect(() => file.add({ BROKEN: null as unknown as string })).toThrow(/BROKEN/);
+  });
+
+  it("rejects unresolved Pulumi outputs with a pointer to deepResolve", () => {
+    const file = new EnvironmentFile();
+    const output = pulumi.output("secret");
+
+    expect(() => file.add({ SECRET: output })).toThrow(/deepResolve/);
+  });
+
+  it("rejects functions", () => {
+    const file = new EnvironmentFile();
+
+    expect(() => file.add({ CALLBACK: (() => "x") as unknown as string })).toThrow(EnvironmentFileError);
+  });
+
+  it("omits commented-out empty values from values(), mirroring render()", () => {
+    const file = new EnvironmentFile([{ OPTIONAL_TOKEN: "", ACTIVE: "yes" }]);
+
+    expect(file.values()).toEqual({ ACTIVE: "yes" });
+    expect(file.render()).toContain("# OPTIONAL_TOKEN=");
   });
 
   it("rejects invalid variable names", () => {

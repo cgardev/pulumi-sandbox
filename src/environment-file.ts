@@ -91,11 +91,19 @@ export class EnvironmentFile {
     return this.#entries.has(key);
   }
 
-  /** The effective variables, each rendered to its final string form. */
+  /**
+   * The effective variables, each rendered to its final string form.
+   * Mirrors {@link render}: keys whose value is the empty string are
+   * commented out in the file and therefore omitted here, so both
+   * consumption paths observe the same environment.
+   */
   values(): Record<string, string> {
     const rendered: Record<string, string> = {};
     for (const [key, entry] of this.#entries) {
-      rendered[key] = renderValue(entry.key, entry.value);
+      const value = renderValue(entry.key, entry.value);
+      if (value !== "") {
+        rendered[key] = value;
+      }
     }
     return rendered;
   }
@@ -128,6 +136,16 @@ export class EnvironmentFile {
       throw new EnvironmentFileError(
         `The value for "${key}" is ${String(value)} — typically an unresolved Pulumi output or missing configuration.`,
       );
+    }
+    // Duck-typed on the marker property so this module stays free of any
+    // @pulumi/pulumi import; pulumi.Output.isInstance checks the same key.
+    if (typeof value === "object" && "__pulumiOutput" in value) {
+      throw new EnvironmentFileError(
+        `The value for "${key}" is an unresolved Pulumi output — resolve it first, e.g. with deepResolve(...).apply(...).`,
+      );
+    }
+    if (typeof value === "function") {
+      throw new EnvironmentFileError(`The value for "${key}" is a function, which cannot be rendered.`);
     }
   }
 }
