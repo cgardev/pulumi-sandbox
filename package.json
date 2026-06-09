@@ -1,5 +1,5 @@
 {
-  "name": "pulumi-sandbox-os",
+  "name": "pulumi-sandbox",
   "version": "0.1.0",
   "description": "Local development sandboxes as code: a batteries-included lifecycle harness for Pulumi inline programs that provision docker-based infrastructure on the developer machine.",
   "keywords": [
@@ -12,7 +12,15 @@
     "developer-experience"
   ],
   "license": "MIT",
-  "author": "Cristian Garcia",
+  "author": "Cristian García",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cgardev/pulumi-sandbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cgardev/pulumi-sandbox/issues"
+  },
+  "homepage": "https://github.com/cgardev/pulumi-sandbox#readme",
   "type": "module",
   "engines": {
     "node": ">=24"

@@ -1,0 +1,49 @@
+# Publishes the package to npm when a version tag (v0.1.0, v1.2.3, ...) is
+# pushed. The job authenticates through GitHub's OIDC token and publishes
+# with provenance, so no long-lived npm token lives in the repository
+# secrets. One-time setup on npmjs.com (package settings, Trusted
+# Publishers): allow repository cgardev/pulumi-sandbox with workflow
+# release.yml. The very first release of a brand-new package name must be
+# published manually (pnpm build && npm publish --access public) before the
+# trusted publisher can be configured.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check
+
+      - run: pnpm test
+
+      - run: pnpm build
+
+      - name: Verify the tag matches the package version
+        run: |
+          version="$(node --print "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+
+      - run: npm publish --access public --provenance

@@ -25,6 +25,23 @@ export function colorMode(): "always" | "never" {
   return colorEnabled ? "always" : "never";
 }
 
+/**
+ * Makes a closed pipe end the process quietly, the way Unix tools behave
+ * under `| head`: without this, Node raises a noisy unhandled EPIPE error.
+ * Installed by the command line entry point only — a library consumer's
+ * process is not touched.
+ */
+export function exitQuietlyOnClosedPipe(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EPIPE") {
+        process.exit(0);
+      }
+      throw error;
+    });
+  }
+}
+
 /** Opening line of every run: project, stack, and the action about to run. */
 export function heading(project: string, stackName: string, action: string): void {
   process.stdout.write(`\n${bold(cyan(project))} ${dim("·")} stack ${bold(stackName)} ${dim("·")} ${action}\n\n`);

@@ -29,7 +29,7 @@ importers:
       '@pulumi/pulumi':
         specifier: ^3.245.0
         version: 3.245.0(typescript@6.0.3)
-      pulumi-sandbox-os:
+      pulumi-sandbox:
         specifier: workspace:*
         version: link:../..
 
@@ -41,7 +41,7 @@ importers:
       '@pulumi/pulumi':
         specifier: ^3.245.0
         version: 3.245.0(typescript@6.0.3)
-      pulumi-sandbox-os:
+      pulumi-sandbox:
         specifier: workspace:*
         version: link:../..
 
@@ -56,7 +56,7 @@ importers:
       '@pulumi/pulumi':
         specifier: ^3.245.0
         version: 3.245.0(typescript@6.0.3)
-      pulumi-sandbox-os:
+      pulumi-sandbox:
         specifier: workspace:*
         version: link:../..
 

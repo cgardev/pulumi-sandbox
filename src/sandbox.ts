@@ -7,7 +7,7 @@ import { SandboxConfigurationError, SandboxLockError } from "./errors.js";
 import { resolveDevId } from "./identity.js";
 import { runInteractiveMenu } from "./interactive.js";
 import { cancelStack, createStack, destroyStack, previewStack, printOutputs, type StackHost } from "./lifecycle.js";
-import { bold, cyan, dim, fail, heading, succeed } from "./terminal.js";
+import { bold, cyan, dim, exitQuietlyOnClosedPipe, fail, heading, succeed } from "./terminal.js";
 
 const PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -343,6 +343,7 @@ export async function createSandbox(options: SandboxOptions, program: SandboxPro
  * all for the interactive menu.
  */
 export async function sandbox(options: SandboxOptions, program: SandboxProgram): Promise<void> {
+  exitQuietlyOnClosedPipe();
   const argv = [...(options.argv ?? process.argv.slice(2))];
   const verb = argv[0] ?? "interactive";
 

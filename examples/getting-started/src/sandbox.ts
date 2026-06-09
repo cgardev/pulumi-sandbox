@@ -1,5 +1,5 @@
 import * as docker from "@pulumi/docker";
-import { EnvironmentFile, sandbox } from "pulumi-sandbox-os";
+import { EnvironmentFile, sandbox } from "pulumi-sandbox";
 
 // The smallest useful sandbox: one database container plus the environment
 // file an application needs to reach it. Run `node src/sandbox.ts create`,

@@ -1,5 +1,5 @@
 /**
- * pulumi-sandbox-os — local development sandboxes as code.
+ * pulumi-sandbox — local development sandboxes as code.
  *
  * Write a plain Pulumi inline program describing the infrastructure your
  * application needs on a developer machine; this library supplies everything

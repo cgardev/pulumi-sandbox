@@ -14,5 +14,5 @@ Initial release.
   on create).
 - Developer-experience helpers: `EnvironmentFile`, `deepResolve`,
   `waitForHttp` / `readyWhenHttp`, `findGitRoot`.
-- Docker utilities under `pulumi-sandbox-os/docker`: `attachShell`,
+- Docker utilities under `pulumi-sandbox/docker`: `attachShell`,
   `dockerExec`, and rule-driven `discoverMaskVolumes`.
