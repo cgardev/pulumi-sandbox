@@ -25,6 +25,10 @@ import type { automation } from "@pulumi/pulumi";
 interface DeploymentResource {
   urn: string;
   provider?: string;
+  parent?: string;
+  dependencies?: string[];
+  propertyDependencies?: Record<string, string[] | undefined>;
+  deletedWith?: string;
 }
 
 interface DeploymentBody {
@@ -47,10 +51,16 @@ export interface ProviderPurge {
  * a deployment body, in place. Returns what was removed so callers can log
  * it or skip the state write when nothing matched.
  *
- * Provider resources live at URNs of the form
- * `urn:pulumi:<stack>::<project>::pulumi:providers:<type>::<name>`; the
- * match is on the type prefix and the resource name, never on the stack or
- * project, so the same purge works against any backend layout.
+ * Surviving resources are sanitized as well: any `dependencies`,
+ * `propertyDependencies`, `parent`, or `deletedWith` reference to a purged
+ * resource is dropped, because the engine refuses to import a deployment
+ * that mentions missing resources.
+ *
+ * Provider resources live at URNs whose type segment ends in
+ * `pulumi:providers:<type>` — `parentType$pulumi:providers:<type>` when the
+ * provider is declared inside a component resource — followed by the
+ * resource name. The match is on that type and the name, never on the stack
+ * or project, so the same purge works against any backend layout.
  */
 export function removeProviderFromDeployment(deployment: unknown, providerName: string): ProviderPurge {
   const body = deployment as DeploymentBody;
@@ -77,22 +87,57 @@ export function removeProviderFromDeployment(deployment: unknown, providerName: 
     return reference !== undefined && [...providerUrns].some((urn) => reference.startsWith(`${urn}::`));
   };
 
+  const purgedUrns = new Set(
+    (body.resources ?? []).filter((resource) => managedByPurgedProvider(resource)).map((resource) => resource.urn),
+  );
+
   if (body.resources) {
     const before = body.resources.length;
-    body.resources = body.resources.filter((resource) => !managedByPurgedProvider(resource));
+    body.resources = body.resources.filter((resource) => !purgedUrns.has(resource.urn));
     purge.removedResources = before - body.resources.length;
+    for (const survivor of body.resources) {
+      dropReferencesTo(survivor, purgedUrns);
+    }
   }
   if (body.pendingOperations) {
     const before = body.pendingOperations.length;
-    body.pendingOperations = body.pendingOperations.filter((operation) => !managedByPurgedProvider(operation.resource));
+    body.pendingOperations = body.pendingOperations.filter(
+      (operation) => !purgedUrns.has(operation.resource.urn) && !managedByPurgedProvider(operation.resource),
+    );
     purge.removedPendingOperations = before - body.pendingOperations.length;
   }
   return purge;
 }
 
+/** Removes every reference a surviving resource holds to the purged URNs. */
+function dropReferencesTo(resource: DeploymentResource, purgedUrns: ReadonlySet<string>): void {
+  if (resource.dependencies) {
+    resource.dependencies = resource.dependencies.filter((urn) => !purgedUrns.has(urn));
+  }
+  if (resource.propertyDependencies) {
+    for (const [property, urns] of Object.entries(resource.propertyDependencies)) {
+      if (urns) {
+        resource.propertyDependencies[property] = urns.filter((urn) => !purgedUrns.has(urn));
+      }
+    }
+  }
+  if (resource.parent !== undefined && purgedUrns.has(resource.parent)) {
+    delete resource.parent;
+  }
+  if (resource.deletedWith !== undefined && purgedUrns.has(resource.deletedWith)) {
+    delete resource.deletedWith;
+  }
+}
+
 function isProviderUrn(urn: string, providerName: string): boolean {
   const segments = urn.split("::");
-  return segments[2]?.startsWith("pulumi:providers:") === true && segments[3] === providerName;
+  if (segments[3] !== providerName) {
+    return false;
+  }
+  // The type segment is `$`-joined with the parent's qualified type when the
+  // provider is declared inside a component resource; the provider's own
+  // type is always the last element.
+  return segments[2]?.split("$").pop()?.startsWith("pulumi:providers:") === true;
 }
 
 /**

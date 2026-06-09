@@ -45,7 +45,12 @@ export async function createStack(host: StackHost): Promise<void> {
       throw error;
     }
     warn("The update failed; assuming a container-hosted service is gone, purging its state, and retrying once.");
-    await purgeContainerHostedProviders(host);
+    try {
+      await purgeContainerHostedProviders(host);
+    } catch (purgeError) {
+      rethrowLockError(purgeError, host.stackName);
+      throw purgeError;
+    }
     try {
       await host.stack.up({ ...streamOptions(), refresh: true });
     } catch (retryError) {
@@ -63,7 +68,12 @@ export async function createStack(host: StackHost): Promise<void> {
  * deleting it.
  */
 export async function destroyStack(host: StackHost): Promise<void> {
-  await purgeContainerHostedProviders(host);
+  try {
+    await purgeContainerHostedProviders(host);
+  } catch (error) {
+    rethrowLockError(error, host.stackName);
+    throw error;
+  }
   step("Refreshing and destroying the stack");
   try {
     await host.stack.destroy({ ...streamOptions(), refresh: true });

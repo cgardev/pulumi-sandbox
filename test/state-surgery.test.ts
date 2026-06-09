@@ -75,6 +75,50 @@ describe("removeProviderFromDeployment", () => {
     expect(purge.removedResources).toBe(0);
   });
 
+  it("matches providers declared inside component resources", () => {
+    const body = {
+      resources: [
+        { urn: `${STACK}::app:identity:IdentityServer$pulumi:providers:keycloak::keycloak` },
+        {
+          urn: `${STACK}::keycloak:index/realm:Realm::tenant`,
+          provider: `${STACK}::app:identity:IdentityServer$pulumi:providers:keycloak::keycloak::def456`,
+        },
+      ],
+    };
+    const purge = removeProviderFromDeployment(body, "keycloak");
+
+    expect(purge.removedResources).toBe(2);
+    expect(body.resources).toHaveLength(0);
+  });
+
+  it("drops references surviving resources hold to purged ones", () => {
+    const realmUrn = `${STACK}::keycloak:index/realm:Realm::tenant`;
+    const survivorUrn = `${STACK}::docker:index/container:Container::application`;
+    const body = {
+      resources: [
+        { urn: `${STACK}::pulumi:providers:keycloak::keycloak` },
+        {
+          urn: realmUrn,
+          provider: `${STACK}::pulumi:providers:keycloak::keycloak::def456`,
+        },
+        {
+          urn: survivorUrn,
+          dependencies: [realmUrn, `${STACK}::docker:index/network:Network::network`],
+          propertyDependencies: { envs: [realmUrn] },
+          deletedWith: realmUrn,
+        },
+      ],
+    };
+    removeProviderFromDeployment(body, "keycloak");
+
+    const survivor = body.resources.find((resource) => resource.urn === survivorUrn);
+    expect(survivor).toEqual({
+      urn: survivorUrn,
+      dependencies: [`${STACK}::docker:index/network:Network::network`],
+      propertyDependencies: { envs: [] },
+    });
+  });
+
   it("does not purge dependents of a different provider with a similar reference", () => {
     const body = {
       resources: [
