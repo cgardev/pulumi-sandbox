@@ -1,0 +1,20 @@
+{
+  "name": "example-dev-workspace",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "sandbox": "node src/sandbox.ts",
+    "sandbox:create": "node src/sandbox.ts create",
+    "sandbox:destroy": "node src/sandbox.ts destroy",
+    "sandbox:reset": "node src/sandbox.ts reset",
+    "sandbox:shell": "node src/sandbox.ts shell"
+  },
+  "dependencies": {
+    "@pulumi/docker": "^5.0.0",
+    "@pulumi/pulumi": "^3.245.0",
+    "pulumi-sandbox-os": "workspace:*"
+  }
+}
