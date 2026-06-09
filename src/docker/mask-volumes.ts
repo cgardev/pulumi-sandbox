@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { warn } from "../terminal.js";
 
 /**
  * A named volume layered over a bind mount, identified by a stable key. The
@@ -44,9 +45,11 @@ export interface MaskRule {
    * Optional expansion hook: derives additional directories to mask from the
    * content of the matched marker file — for build systems whose
    * configuration references sibling project roots. Returned paths are
-   * resolved against the marker's directory.
+   * resolved against the marker's directory and must stay inside the walked
+   * root; anything outside the bind mount cannot be masked and is skipped
+   * with a warning.
    */
-  expand?: (markerPath: string, content: string) => readonly string[];
+  expand?: ((markerPath: string, content: string) => readonly string[]) | undefined;
 }
 
 export interface DiscoverMaskVolumesOptions {
@@ -57,10 +60,12 @@ export interface DiscoverMaskVolumesOptions {
   rules: readonly MaskRule[];
 
   /**
-   * Directory names never descended into, on top of the masked directories
-   * themselves and dot-directories (always skipped).
+   * Directory names never descended into, on top of the directories actually
+   * masked and dot-directories (always skipped). Masking already prevents
+   * descending into a masked directory, but only where its rule fired — an
+   * unrelated directory that merely shares the name is still walked.
    */
-  prune?: readonly string[];
+  prune?: readonly string[] | undefined;
 }
 
 /**
@@ -79,22 +84,48 @@ export interface DiscoverMaskVolumesOptions {
  */
 export function discoverMaskVolumes(rootDirectory: string, options: DiscoverMaskVolumesOptions): MaskVolume[] {
   const root = path.resolve(rootDirectory);
-  const masked = new Set(options.rules.flatMap((rule) => rule.mask.map((leaf) => path.basename(leaf))));
-  const prune = new Set([...masked, ...(options.prune ?? [])]);
+  const prune = new Set(options.prune ?? []);
   const volumes: MaskVolume[] = [];
-  const seen = new Set<string>();
+  const seenContainerPaths = new Set<string>();
+  const containerPathByKey = new Map<string, string>();
+
+  const uniqueKey = (prefix: string, relativeDirectory: string, leaf: string, containerPath: string): string => {
+    const base = `${prefix}--${slug(relativeDirectory)}`;
+    const candidates = [base, `${base}--${slug(leaf)}`];
+    for (const candidate of candidates) {
+      if (!containerPathByKey.has(candidate)) {
+        return candidate;
+      }
+    }
+    let ordinal = 2;
+    while (containerPathByKey.has(`${candidates[1]}-${ordinal}`)) {
+      ordinal += 1;
+    }
+    return `${candidates[1]}-${ordinal}`;
+  };
 
   const mask = (prefix: string, absoluteDirectory: string, leaf: string): void => {
-    const relative = path.relative(root, path.resolve(absoluteDirectory, leaf));
-    const containerPath = path.posix.join(options.containerRoot, relative.replace(/\\/g, "/"));
-    if (seen.has(containerPath)) {
+    const absoluteMasked = path.resolve(absoluteDirectory, leaf);
+    const relativeMasked = path.relative(root, absoluteMasked);
+    if (relativeMasked.startsWith("..") || path.isAbsolute(relativeMasked)) {
+      warn(`Cannot mask ${absoluteMasked}: it is outside the walked root ${root}.`);
       return;
     }
-    seen.add(containerPath);
-    volumes.push({ key: `${prefix}--${slug(path.dirname(relative))}`, containerPath });
+    const containerPath = path.posix.join(options.containerRoot, relativeMasked.replace(/\\/g, "/"));
+    if (seenContainerPaths.has(containerPath)) {
+      return;
+    }
+    seenContainerPaths.add(containerPath);
+    const key = uniqueKey(prefix, path.dirname(relativeMasked), path.basename(relativeMasked), containerPath);
+    containerPathByKey.set(key, containerPath);
+    volumes.push({ key, containerPath });
   };
 
   const walk = (absoluteDirectory: string): void => {
+    // Children masked in THIS directory are not walked into; an unrelated
+    // directory elsewhere that shares the name still is.
+    const maskedChildren = new Set<string>();
+
     for (const rule of options.rules) {
       const markerPath = firstExisting(absoluteDirectory, rule.markers);
       if (markerPath === undefined) {
@@ -102,6 +133,10 @@ export function discoverMaskVolumes(rootDirectory: string, options: DiscoverMask
       }
       for (const leaf of rule.mask) {
         mask(rule.prefix, absoluteDirectory, leaf);
+        const [firstSegment, ...restSegments] = leaf.split("/");
+        if (firstSegment !== undefined && restSegments.length === 0) {
+          maskedChildren.add(firstSegment);
+        }
       }
       if (rule.expand) {
         const content = fs.readFileSync(markerPath, "utf-8");
@@ -114,7 +149,12 @@ export function discoverMaskVolumes(rootDirectory: string, options: DiscoverMask
     }
 
     for (const entry of fs.readdirSync(absoluteDirectory, { withFileTypes: true })) {
-      if (entry.isDirectory() && !prune.has(entry.name) && !entry.name.startsWith(".")) {
+      if (
+        entry.isDirectory() &&
+        !maskedChildren.has(entry.name) &&
+        !prune.has(entry.name) &&
+        !entry.name.startsWith(".")
+      ) {
         walk(path.join(absoluteDirectory, entry.name));
       }
     }

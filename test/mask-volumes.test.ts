@@ -89,4 +89,41 @@ describe("discoverMaskVolumes", () => {
 
     expect(volumes).toEqual([{ key: "node-modules--frontend", containerPath: "/workspace/frontend/node_modules" }]);
   });
+
+  it("still walks an unmasked directory that shares its name with a mask leaf", () => {
+    // tools/build is a real source directory — no gradle marker made it a
+    // mask — so the node project inside it must still be discovered.
+    file("tools/build/package.json");
+
+    const volumes = discoverMaskVolumes(root, { containerRoot: "/workspace", rules: RULES });
+
+    expect(volumes).toEqual([
+      { key: "node-modules--tools-build", containerPath: "/workspace/tools/build/node_modules" },
+    ]);
+  });
+
+  it("disambiguates keys when one rule masks several directories in one place", () => {
+    file("service/generator.toml");
+
+    const volumes = discoverMaskVolumes(root, {
+      containerRoot: "/workspace",
+      rules: [{ prefix: "generated", markers: ["generator.toml"], mask: ["build", "out"] }],
+    });
+
+    expect(volumes).toEqual([
+      { key: "generated--service", containerPath: "/workspace/service/build" },
+      { key: "generated--service--out", containerPath: "/workspace/service/out" },
+    ]);
+  });
+
+  it("skips expansion targets outside the walked root", () => {
+    file("backend/settings.gradle.kts", 'includeBuild("../../escapee")\n');
+
+    const volumes = discoverMaskVolumes(root, { containerRoot: "/workspace", rules: RULES });
+
+    expect(volumes.map((volume) => volume.containerPath)).toEqual([
+      "/workspace/backend/build",
+      "/workspace/backend/.gradle",
+    ]);
+  });
 });

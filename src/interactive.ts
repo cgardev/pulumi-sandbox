@@ -17,6 +17,11 @@ export interface InteractiveHost {
  */
 export async function runInteractiveMenu(host: InteractiveHost): Promise<void> {
   const input = readline.createInterface({ input: process.stdin, output: process.stdout });
+  // End-of-input (Ctrl+D, a closed pipe) must end the menu, not leave the
+  // pending question unsettled forever.
+  const closed = new Promise<string>((resolve) => {
+    input.once("close", () => resolve("exit"));
+  });
   try {
     while (true) {
       process.stdout.write("\n");
@@ -25,12 +30,12 @@ export async function runInteractiveMenu(host: InteractiveHost): Promise<void> {
       });
       process.stdout.write(`  ${cyan("0")}  ${bold("exit".padEnd(8))} ${dim("Leave the menu")}\n\n`);
 
-      const answer = (await input.question(`${cyan("›")} action: `)).trim().toLowerCase();
+      const answer = (await Promise.race([input.question(`${cyan("›")} action: `), closed])).trim().toLowerCase();
       if (answer === "0" || answer === "exit" || answer === "quit" || answer === "q") {
         return;
       }
 
-      const byNumber = LIFECYCLE_ACTIONS[Number.parseInt(answer, 10) - 1];
+      const byNumber = /^[0-9]+$/.test(answer) ? LIFECYCLE_ACTIONS[Number(answer) - 1] : undefined;
       const action = byNumber ?? (isLifecycleAction(answer) ? answer : undefined);
       if (action === undefined) {
         warn(`"${answer}" is not an action — pick a number or name from the list.`);
