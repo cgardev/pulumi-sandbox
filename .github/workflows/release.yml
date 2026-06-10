@@ -24,11 +24,13 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      # No registry-url here: it would write an .npmrc with an (empty)
+      # _authToken, and an explicit credential makes npm skip the trusted
+      # publishing token exchange entirely — the publish then fails with 404.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
 
