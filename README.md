@@ -19,15 +19,14 @@ import * as docker from "@pulumi/docker";
 import { sandbox } from "@cgardev/pulumi-sandbox";
 
 await sandbox({ name: "shop" }, (context) => {
-  const image = new docker.RemoteImage("postgres", { name: "postgres:18", keepLocally: true });
+  const postgres = new docker.RemoteImage("postgres", { name: "postgres:18" });
 
   new docker.Container("database", {
-    image: image.imageId,
+    image: postgres.imageId,
     name: context.physicalName("database"),
     ports: [{ internal: 5432, external: 25432 }],
     envs: ["POSTGRES_USER=dev", "POSTGRES_PASSWORD=dev", "POSTGRES_DB=shop"],
-    mustRun: true,
-  }, { deleteBeforeReplace: true });
+  });
 });
 ```
 
@@ -40,6 +39,12 @@ node src/sandbox.ts            # interactive menu
 State lives in a git-ignored `.sandbox/` directory, on Pulumi's local file
 backend. There is no account to create and nothing to log into. On Node.js 24
 or newer the TypeScript entry point runs as-is, without a build step.
+
+The complete, runnable version of this program — including the real-world
+flags the snippet above leaves out — is
+[`examples/getting-started`](examples/getting-started); the other
+[examples](examples) scale the same loop up to one database per service, a
+Keycloak realm, and a containerized development workspace.
 
 ## Why
 
@@ -287,39 +292,260 @@ the whole team.
 
 ## Caveats
 
-- `destroy` removes named volumes. Database contents and caches go with
-  them. Bind-mounted directories survive.
-- Secrets on the local backend are encrypted with a well-known default
-  passphrase (`sandbox`). Acceptable for throwaway development credentials;
-  set `passphrase` or `PULUMI_CONFIG_PASSPHRASE` before pointing the backend
-  anywhere shared.
-- The state directory accumulates history and backups over time. After a
-  destroy you can delete `.sandbox/` entirely for a clean slate.
-- `readyWhenHttp` probes run again on every update once their gate resolves,
-  so `onReady` hooks must be idempotent. Previews skip the probes.
+Each of these is a deliberate trade-off, not an oversight. Knowing the
+reasoning makes the way out obvious.
 
-## API overview
+### `destroy` deletes your data
 
-Core (`@cgardev/pulumi-sandbox`):
+`destroy` removes named volumes; database contents and caches go with them.
+That is what makes `reset` trustworthy — a sandbox that preserved data
+across resets would hand you stale state precisely when you asked for a
+clean environment. Two consequences for how you write the program: anything
+the sandbox needs on every boot (schemas, seed users, realms) belongs in
+the program itself, where `create` rebuilds it; anything that must survive
+(fixtures you edit by hand, a download cache that is expensive to refill)
+belongs in a bind-mounted directory, which Pulumi never owned and therefore
+never deletes.
 
-- `sandbox(options, program)` — the complete entry point: dispatch, lifecycle, error rendering
-- `createSandbox(options, program)` / `Sandbox` — programmatic control, the underlying `automation.Stack` included
-- `EnvironmentFile`, `deepResolve`, `waitForHttp`, `readyWhenHttp`, `findGitRoot`
-- `resolveDevId`, `parseEnvFile`, `readEnvFile`, `booleanFlag`
-- `purgeProviderFromState`, `removeProviderFromDeployment`
-- `fileBackendUrl`, `resolveDirectories`, `ensureDirectories`
-- `SandboxError`, `SandboxConfigurationError`, `SandboxLockError`, `EnvironmentFileError`
+### The default secrets passphrase is well known
 
-Docker utilities (`@cgardev/pulumi-sandbox/docker`, host-side, no `@pulumi/docker` required):
+Pulumi encrypts stack secrets with a passphrase, and this library defaults
+it to the literal string `sandbox`. A random per-machine passphrase would
+be security theater: it would have to be stored next to the state it
+protects, and the secrets in question are throwaway development credentials
+for services on localhost. What the well-known default buys is the
+zero-configuration promise — clone, `create`, no prompt. The moment state
+leaves the developer machine the math changes: when you point `backendUrl`
+at shared storage, set `passphrase` (or the `PULUMI_CONFIG_PASSPHRASE`
+environment variable) to a real secret.
 
-- `attachShell(containerName, options)` — interactive `docker exec`
-- `dockerExec(containerName, command, options)` — idempotent post-boot configuration
-- `discoverMaskVolumes(root, { containerRoot, rules })` — rule-driven discovery of directories to mask with container-local volumes
+### `.sandbox/` grows over time
 
-Plugins (no Pulumi involved; they consume resolved outputs):
+The file backend keeps every checkpoint, plus history and backups, and
+never prunes them. That history is what makes recovery from interrupted
+runs possible, so the library does not clean it behind your back. The cost
+is disk space, nothing else; the directory is git-ignored and machine
+local. After a `destroy`, deleting `.sandbox/` entirely is always safe and
+gives a clean slate.
 
-- `@cgardev/pulumi-sandbox/plugins/intellij` — `writeIntellijDataSources`, `renderDataSourcesXml`, `renderDataSourcesLocalXml`
-- `@cgardev/pulumi-sandbox/plugins/bookmarks` — `writeChromeBookmarks`, `renderChromeBookmarksHtml`
+### `onReady` hooks must be idempotent
+
+`readyWhenHttp` lives inside the resource graph, and Pulumi re-evaluates
+the graph on every update — so once its gate resolves, the probe and its
+`onReady` hook run again on each subsequent `create`. There is no reliable
+"first boot only" signal that survives both an in-place update and a
+container recreated out of band, so rather than pretending to have one the
+library makes the contract explicit: write hooks that are no-ops against an
+already-configured service. In practice this is easy — `dockerExec`
+shrugging off an "already exists" error is the common case. Previews never
+probe and never run hooks, because a preview must not stall on a stopped
+container or cause side effects.
+
+## API reference
+
+Grouped by what you are trying to do. A typical program touches `sandbox()`,
+`EnvironmentFile`, `deepResolve`, and perhaps `readyWhenHttp`; the rest is
+exported for the day you build tooling *around* the sandbox instead of
+inside it.
+
+### Entry points
+
+`sandbox(options, program)` — the complete entry point, and for most
+projects the only import. It resolves the developer identity, dispatches
+the command line (lifecycle actions, custom commands, `help`, or the
+interactive menu when no action is given), and renders every failure as a
+friendly message with remediation steps and a non-zero exit code. Your
+entry script is one call:
+
+```typescript
+await sandbox({ name: "shop" }, (context) => {
+  // plain Pulumi resources
+});
+```
+
+`createSandbox(options, program)` → `Sandbox` — the same fully wired stack
+with no command line attached. Use it where code drives the lifecycle
+instead of a developer typing verbs: integration tests, CI smoke runs, a
+larger task runner that embeds the sandbox. The instance has `create()`,
+`destroy()`, `reset()`, `preview()`, and `cancel()` methods, and exposes
+the underlying `automation.Stack` for operations the lifecycle does not
+cover:
+
+```typescript
+const instance = await createSandbox({ name: "shop" }, program);
+await instance.create();
+try {
+  await runSmokeTests();
+} finally {
+  await instance.destroy();
+}
+```
+
+### Turning outputs into application configuration
+
+The resource graph knows the ports, endpoints, and generated credentials;
+your application reads a flat `.env` file. These two close that gap — the
+worked example is in
+[Generating configuration for applications](#generating-configuration-for-applications).
+
+`deepResolve(value)` — collapses a plain structure with Pulumi outputs
+nested anywhere inside (objects, arrays, promises) into a single output of
+the fully concrete shape. It exists because collecting a dozen values from
+different resources with raw `apply` calls turns into a pyramid; with
+`deepResolve` you assemble the structure once and consume it in one
+closure. Class instances and circular references are rejected with the
+offending path named, since Pulumi would otherwise flatten them silently.
+
+`EnvironmentFile` — an ordered, incrementally built `.env` file. Each
+`add({ ... })` call starts a blank-line-separated group; re-adding a key
+overwrites it in place, so the file layout stays stable across runs. An
+empty string renders as a commented-out `# KEY=` line — present for
+discoverability, inactive for the loader. Passing `undefined`, `null`, or
+an unresolved output throws immediately with the offending key: a loud
+failure at render time beats debugging an application that read a poisoned
+value. `write(path)` creates parent directories and writes the file;
+`values()` returns the same effective variables as an object for in-process
+use.
+
+### Waiting for services to boot
+
+`readyWhenHttp(gate, url, options)` — returns an output that resolves to
+`url` only after the endpoint behind it responds, gated on another resource
+(typically the container serving the endpoint) being scheduled first.
+Anything consuming the returned output — a provider, a dependent resource —
+is therefore held back until the service has actually booted. The optional
+`onReady` hook is the place for imperative post-boot configuration; pair it
+with `dockerExec`. Previews resolve immediately, without probing and
+without side effects.
+
+`waitForHttp(url, options)` — the raw probe underneath: polls until the
+endpoint responds or the timeout elapses (default 180 seconds, every 2
+seconds) and returns whether it became ready. It deliberately never throws —
+on timeout it warns and returns `false`, so flows that race a disappearing
+container (destroy, refresh) degrade to a warning instead of wedging. By
+default any HTTP status counts as ready, even a 403, because a status line
+proves the server is up — which is all a boot probe needs; pass
+`expect: "ok"` to require a 2xx.
+
+### Developer identity and configuration files
+
+`resolveDevId(options)` — the exact resolution the sandbox itself performs:
+the explicit option, then the `SANDBOX_DEV_ID` environment variable, then
+the optional `envFile`, then `"local"` — or an error when `require: true`.
+Exported so external tooling (a script that computes container names, a
+cleanup job) can agree with the sandbox about whose resources it is
+touching. The constants `DEV_ID_VARIABLE` and `DEFAULT_DEV_ID` are exported
+alongside it.
+
+`readEnvFile(path)` / `parseEnvFile(content)` — minimal `KEY=value`
+parsing: blank lines and `#` comments are skipped, the first `=` splits key
+from value, both sides are trimmed. No quoting, no interpolation —
+deliberately less than dotenv, so sandbox configuration files stay
+trivially predictable. `readEnvFile` returns `undefined` for a missing
+file, keeping "not configured" distinguishable from "empty".
+
+`booleanFlag(value, defaultValue)` — interprets `true`/`false`, `1`/`0`,
+`yes`/`no`, and `on`/`off` case-insensitively; anything else, including a
+missing value, yields the default. For feature toggles read from the
+environment or an `envFile`.
+
+### State surgery
+
+The high-level switch is the `containerHostedProviders` option (see
+[Container-hosted providers](#container-hosted-providers)); these are the
+raw operations underneath it, exported for custom recovery tooling.
+
+`purgeProviderFromState(stack, providerName)` — exports the stack's state,
+removes the named provider and every resource it manages, and imports the
+result back. The import only happens when something actually matched, so a
+healthy stack never sees a state write. Returns a summary of what was
+removed.
+
+`removeProviderFromDeployment(deployment, providerName)` — the pure,
+in-memory half: mutates an exported deployment body in place and also drops
+every dangling reference (dependencies, parents, `deletedWith`) to the
+purged resources, because the engine refuses to import a deployment that
+mentions missing resources. Useful for testing recovery logic and for
+inspecting state offline.
+
+### Paths and plumbing
+
+`fileBackendUrl(absoluteDirectory)` — builds the one `file://` URL form
+that Pulumi's DIY backend accepts on both Windows and POSIX. Node's own
+`pathToFileURL` produces `file:///D:/...`, which the backend mis-parses on
+Windows into `file:///D:/D:/...`; this helper exists so nobody has to
+rediscover that bug.
+
+`resolveDirectories(homeDir, projectName)` / `ensureDirectories(dirs)` —
+compute and create the `.sandbox/` layout: `state/` shared per home,
+`work/<project>/` scoped per project. Exported for tools that need to
+locate sandbox state — a cleanup script, a disk usage report — without
+hardcoding the layout.
+
+`findGitRoot(startDirectory?)` — walks upward until a `.git` entry appears
+and returns that directory, or `undefined` outside a repository. Both
+`.git` directories and `.git` pointer files count, so worktrees and
+submodules work. The natural anchor for artifacts that belong at the
+repository root — the `.idea` directory the IntelliJ plugin writes to, for
+example.
+
+### Errors
+
+Every library error extends `SandboxError`, and the library throws instead
+of ever calling `process.exit` itself — so the same functions behave under
+tests and inside larger tools, and `sandbox()` is the single place where
+errors become terminal output and an exit code. When embedding, catch the
+subtypes: `SandboxConfigurationError` (the machine or the options are
+incomplete; carries `remediation` lines to show the developer),
+`SandboxLockError` (another process holds the state lock; resolved by the
+`cancel` action), and `EnvironmentFileError` (a value could not be rendered
+into an environment file).
+
+### Docker utilities — `@cgardev/pulumi-sandbox/docker`
+
+Host-side helpers that shell out to the `docker` CLI. Nothing here imports
+Pulumi, and `@pulumi/docker` is not required.
+
+`attachShell(containerName, options)` — the interactive
+`docker exec -it <container> <shell>` a developer would type by hand,
+returning the shell's exit code. Built to back a custom `shell` command —
+see [Custom commands](#custom-commands).
+
+`dockerExec(containerName, command, options)` — runs a command inside a
+running container, for the post-boot configuration no provider covers:
+unlocking an admin API, creating a seed user, flipping a development-only
+setting. On failure it warns and returns `false` instead of throwing
+(override with `warnOnly: false`), because these calls usually run inside
+readiness chains where a throw would wedge destroy and refresh. Commands
+must be idempotent — see the `onReady` caveat above.
+
+`discoverMaskVolumes(root, { containerRoot, rules })` — for containerized
+development environments where the repository is bind-mounted into the
+container: walks the tree and applies caller-supplied rules ("a directory
+containing `package.json` gets its `node_modules` masked") to produce the
+container-local volumes that keep host build artifacts and container build
+artifacts separate. Rule-driven precisely so the library stays ignorant of
+any particular build tool — your rules carry that knowledge.
+
+### Plugins — `@cgardev/pulumi-sandbox/plugins/*`
+
+Generators for the tools around the sandbox. They consume resolved outputs
+and never import Pulumi; the worked example is in [Plugins](#plugins).
+
+`plugins/intellij` — `writeIntellijDataSources(ideaDir, definitions)`
+writes both halves of an IntelliJ data source (`dataSources.xml` and
+`dataSources.local.xml`) for the Postgres databases the sandbox provisions.
+UUIDs are derived deterministically from each data-source name, so the
+IDE's introspection cache survives regeneration; an optional password is
+embedded into the JDBC URL so IntelliJ connects without prompting.
+`renderDataSourcesXml` and `renderDataSourcesLocalXml` return the same
+documents as strings.
+
+`plugins/bookmarks` — `writeChromeBookmarks(outputDir, entries,
+rootFolder?)` renders the consoles and dashboards the sandbox exposes as a
+`bookmarks.html` in the Netscape bookmark format Chrome imports
+(`chrome://bookmarks` → Import bookmarks), with entries grouped into
+sub-folders. `renderChromeBookmarksHtml` returns the document as a string.
 
 ## Development
 
