@@ -81,6 +81,9 @@ function and a loop rather than a wall of YAML.
 - Helpers for the boring parts: `EnvironmentFile`, `deepResolve`,
   `readyWhenHttp`, `findGitRoot`, and a `/docker` module with `attachShell`,
   `dockerExec` and mask-volume discovery.
+- Plugins that project the sandbox onto developer tooling: IntelliJ data
+  sources for the provisioned databases, Chrome bookmarks for the exposed
+  consoles.
 
 The core has zero runtime dependencies. `@pulumi/pulumi` is the only peer
 dependency, and the library knows nothing about any particular database,
@@ -230,6 +233,34 @@ await sandbox(
 );
 ```
 
+## Plugins
+
+The `plugins/` modules generate artifacts for the tools around the sandbox.
+They never touch Pulumi — pass them resolved outputs, typically from a
+`deepResolve(...).apply(...)` confined to create runs:
+
+```typescript
+import { writeIntellijDataSources } from "@cgardev/pulumi-sandbox/plugins/intellij";
+import { writeChromeBookmarks } from "@cgardev/pulumi-sandbox/plugins/bookmarks";
+
+writeIntellijDataSources(".idea", [
+  { name: "orders", jdbcUrl: "jdbc:postgresql://localhost:25432/orders", userName: "dev", password: "dev" },
+]);
+
+writeChromeBookmarks("generated", [
+  { name: "Mail catcher", url: "http://localhost:25080", group: "Tools" },
+  { name: "Identity console", url: "http://localhost:25081", group: "Tools" },
+], "Shop Sandbox");
+```
+
+The IntelliJ plugin writes both halves of a data source
+(`dataSources.xml` and `dataSources.local.xml`) with UUIDs derived from the
+data-source name, so the IDE's introspection cache survives sandbox resets.
+Passing a `password` embeds it in the JDBC URL — IntelliJ then connects
+without prompting, which is only acceptable for throwaway sandbox
+credentials. The bookmarks plugin renders a `bookmarks.html` importable via
+`chrome://bookmarks` → Import bookmarks.
+
 ## Examples
 
 | Example                                        | Shows                                                                                   |
@@ -284,6 +315,11 @@ Docker utilities (`@cgardev/pulumi-sandbox/docker`, host-side, no `@pulumi/docke
 - `attachShell(containerName, options)` — interactive `docker exec`
 - `dockerExec(containerName, command, options)` — idempotent post-boot configuration
 - `discoverMaskVolumes(root, { containerRoot, rules })` — rule-driven discovery of directories to mask with container-local volumes
+
+Plugins (no Pulumi involved; they consume resolved outputs):
+
+- `@cgardev/pulumi-sandbox/plugins/intellij` — `writeIntellijDataSources`, `renderDataSourcesXml`, `renderDataSourcesLocalXml`
+- `@cgardev/pulumi-sandbox/plugins/bookmarks` — `writeChromeBookmarks`, `renderChromeBookmarksHtml`
 
 ## Development
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- Added plugins — modules that project the sandbox onto developer tooling,
+  with no Pulumi involvement:
+  - `@cgardev/pulumi-sandbox/plugins/intellij`: generates IntelliJ data
+    sources (`dataSources.xml` + `dataSources.local.xml`) for the databases a
+    sandbox provisions, with name-derived stable UUIDs and optional embedded
+    credentials.
+  - `@cgardev/pulumi-sandbox/plugins/bookmarks`: generates a Chrome-importable
+    bookmarks file for the consoles and dashboards a sandbox exposes.
+
 ## 0.1.2 (2026-06-09)
 
 - Rewrote the README: a real explanation of where the library comes from,
