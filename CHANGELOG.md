@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-06-10)
 
 - Added plugins — modules that project the sandbox onto developer tooling,
   with no Pulumi involvement:
@@ -10,6 +10,8 @@
     credentials.
   - `@cgardev/pulumi-sandbox/plugins/bookmarks`: generates a Chrome-importable
     bookmarks file for the consoles and dashboards a sandbox exposes.
+- Reworked the README: the caveats now explain the trade-off behind each
+  behavior, and the API overview grew into a reference grouped by intent.
 
 ## 0.1.2 (2026-06-09)
 
